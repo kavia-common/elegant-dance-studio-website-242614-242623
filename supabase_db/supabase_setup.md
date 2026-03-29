@@ -2,7 +2,9 @@
 
 This project uses Supabase/Postgres to store **gallery image metadata** and Supabase Storage to store the **image files**.
 
-## 1) Database schema (already applied in this container)
+---
+
+## 1) Database schema (applied in this container)
 
 Table: `public.gallery_images`
 
@@ -12,9 +14,24 @@ Columns:
 - `alt_text` (text, nullable) — accessibility description
 - `created_at` (timestamptz, not null, default `now()`)
 
+Indexes:
+- `gallery_images_created_at_idx` on `(created_at desc)` for sorting newest-first.
+
 Notes:
 - `pgcrypto` extension is enabled to support `gen_random_uuid()`.
-- Index: `gallery_images_created_at_idx` on `(created_at desc)` for sorting newest-first.
+
+### Local dev DB connection (this repo container)
+
+The connection command is stored here:
+- `supabase_db/db_connection.txt`
+
+Example usage:
+```bash
+# from supabase_db/
+$(cat db_connection.txt) -c "select now();"
+```
+
+---
 
 ## 2) Supabase Storage bucket
 
@@ -27,9 +44,11 @@ Suggested bucket settings:
 Upload path suggestion:
 - `gallery/<uuid>.<ext>` (or any consistent naming scheme)
 
+---
+
 ## 3) RLS policies (table: `public.gallery_images`)
 
-The desired access model is:
+Desired access model:
 - **Public read**: anyone can list and view gallery metadata
 - **Admin write/delete**: only admin users can insert/update/delete rows
 
@@ -50,9 +69,9 @@ using (true);
 
 ### 3.3 Admin write/delete policies
 
-This project expects an “admin” concept to be enforced by **JWT claims** or a **dedicated admin role**.
+This project expects an “admin” concept to be enforced by **JWT claims** (recommended) or a **dedicated admin role**.
 
-Recommended approach: **JWT claim** `app_metadata.role = 'admin'`.
+Recommended approach: JWT claim `app_metadata.role = 'admin'`.
 
 Create policies:
 ```sql
@@ -76,7 +95,9 @@ to authenticated
 using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
 ```
 
-If you instead use a different claim (e.g. `auth.jwt() ->> 'role'`) or use Supabase “teams”/RBAC, update these policies accordingly.
+If you instead use a different claim (e.g. `auth.jwt() ->> 'role'`) or Supabase RBAC/teams, update these policies accordingly.
+
+---
 
 ## 4) Storage policies (bucket: `gallery`)
 
@@ -84,10 +105,9 @@ Goal:
 - Public can **read** images
 - Only admin can **write/delete** images
 
-In Supabase Dashboard → Storage → Policies (or SQL), implement:
-
 ### 4.1 Public read
-If bucket is public, reads are already public. If using RLS policies for storage objects, you can use:
+
+If the bucket is public, reads are already public. If using RLS policies for `storage.objects`, you can use:
 
 ```sql
 create policy "Public read gallery objects"
@@ -98,6 +118,7 @@ using (bucket_id = 'gallery');
 ```
 
 ### 4.2 Admin write/delete
+
 ```sql
 create policy "Admin upload gallery objects"
 on storage.objects
@@ -131,9 +152,11 @@ using (
 );
 ```
 
+---
+
 ## 5) Admin user expectation
 
-You must ensure at least one Supabase user has:
+At least one Supabase user must have:
 - `app_metadata.role = 'admin'`
 
 How you set that depends on your auth flow:
@@ -143,6 +166,7 @@ How you set that depends on your auth flow:
 The frontend/public site should only require **read** access.
 
 ---
+
 Troubleshooting:
 - If inserts fail with RLS errors: verify the user is authenticated and has `app_metadata.role='admin'`.
-- If images don’t load publicly: verify bucket is public OR storage select policy exists for anon users.
+- If images don’t load publicly: verify the bucket is public OR the `storage.objects` select policy exists for `anon`.
