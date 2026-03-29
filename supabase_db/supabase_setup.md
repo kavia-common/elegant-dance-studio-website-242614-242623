@@ -48,54 +48,31 @@ Upload path suggestion:
 
 ## 3) RLS policies (table: `public.gallery_images`)
 
-Desired access model:
-- **Public read**: anyone can list and view gallery metadata
-- **Admin write/delete**: only admin users can insert/update/delete rows
+Important note about this repository's backend:
+- The `nextjs_backend_admin` service uses **SUPABASE_SERVICE_ROLE_KEY** for DB/storage operations via Supabase REST.
+- The service-role key **bypasses RLS** policies.
+- Admin access for the app is enforced by the backend's own JWT (`/api/admin/auth/login`) and request filter for `/api/admin/**`.
 
-### 3.1 Enable RLS
-In Supabase SQL editor:
+Therefore:
+- RLS is **optional** for this repo’s current backend implementation.
+- You may still enable RLS as a defense-in-depth measure, but it will not affect calls made with the service-role key.
+
+If you want to enforce policies at the DB level, you must:
+- Stop using the service-role key for normal operations, and
+- Use Supabase Auth JWTs / anon key + user JWTs, and
+- Rework the backend accordingly.
+
+### Optional: Public read policy (when using anon/auth JWTs)
+If you implement a JWT-based Supabase Auth flow later, a common policy is:
 ```sql
 alter table public.gallery_images enable row level security;
-```
 
-### 3.2 Public read policy
-```sql
 create policy "Public read gallery images"
 on public.gallery_images
 for select
 to anon, authenticated
 using (true);
 ```
-
-### 3.3 Admin write/delete policies
-
-This project expects an “admin” concept to be enforced by **JWT claims** (recommended) or a **dedicated admin role**.
-
-Recommended approach: JWT claim `app_metadata.role = 'admin'`.
-
-Create policies:
-```sql
-create policy "Admin insert gallery images"
-on public.gallery_images
-for insert
-to authenticated
-with check ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
-
-create policy "Admin update gallery images"
-on public.gallery_images
-for update
-to authenticated
-using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin')
-with check ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
-
-create policy "Admin delete gallery images"
-on public.gallery_images
-for delete
-to authenticated
-using ((auth.jwt() -> 'app_metadata' ->> 'role') = 'admin');
-```
-
-If you instead use a different claim (e.g. `auth.jwt() ->> 'role'`) or Supabase RBAC/teams, update these policies accordingly.
 
 ---
 
